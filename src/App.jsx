@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BrowserRouter } from 'react-router-dom';
+import { HashRouter } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { GeoProvider } from './context/GeoContext';
 import { AppRoutes } from './routes/AppRoutes';
@@ -18,13 +18,13 @@ function App() {
       </AnimatePresence>
       
       {!showSplash && (
-        <BrowserRouter>
+        <HashRouter>
           <AuthProvider>
             <GeoProvider>
               <AppRoutes />
             </GeoProvider>
           </AuthProvider>
-        </BrowserRouter>
+        </HashRouter>
       )}
     </>
   );
