@@ -126,7 +126,8 @@ export const resolveAddressAPI = async (address) => {
 
   // 2. Try local GeoResolve AI backend first
   try {
-    const response = await axios.post('http://localhost:8000/api/v1/geocode/resolve', 
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const response = await axios.post(`${API_URL}/api/v1/geocode/resolve`, 
       { address },
       {
         headers: {
@@ -140,6 +141,8 @@ export const resolveAddressAPI = async (address) => {
     if (data && data.latitude && data.longitude) {
       return {
         address: data.normalized_address || data.original_address,
+        raw_address: data.original_query || data.original_address,
+        normalized_query: data.normalized_query || data.normalized_address || data.original_address,
         lat: data.latitude,
         lon: data.longitude,
         confidence: (data.confidence / 100),

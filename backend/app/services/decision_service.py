@@ -30,6 +30,7 @@ class GeocodeDecisionResult(BaseModel):
     validated_pincode: bool = False
     matched_landmarks_with_distance: List[Dict[str, Any]] = []
     response_time_ms: int
+    spelling_corrected_address: Optional[str] = None
 
 class DecisionService:
     def __init__(self):
@@ -178,6 +179,7 @@ class DecisionService:
         result = GeocodeDecisionResult(
             original_address=raw_address,
             normalized_address=display_address,
+            spelling_corrected_address=normalized,
             latitude=lat,
             longitude=lon,
             confidence=float(conf_report.score),

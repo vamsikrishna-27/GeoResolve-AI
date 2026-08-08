@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useGeo } from '../context/GeoContext';
+import { useTheme } from '../context/ThemeContext';
 import { 
   LayoutDashboard, 
   MapPin, 
@@ -26,6 +27,7 @@ export const DashboardLayout = ({ children }) => {
   const { history, resolveAddress } = useGeo();
   const navigate = useNavigate();
   const location = useLocation();
+  const { theme, toggleTheme } = useTheme();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
@@ -116,6 +118,15 @@ export const DashboardLayout = ({ children }) => {
         {/* Right: Telemetry Alerts & Profile */}
         <div className="flex items-center space-x-3.5 relative">
           
+          {/* Theme Toggle Button */}
+          <button 
+            onClick={toggleTheme}
+            className="p-2 rounded-lg border border-white/5 bg-transparent hover:bg-slate-950 text-slate-300 hover:text-white transition-all select-none text-xs flex items-center justify-center w-8 h-8 cursor-pointer"
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
+
           {/* Notifications Bell */}
           <div className="relative">
             <button 

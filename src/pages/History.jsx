@@ -199,8 +199,15 @@ export const History = () => {
                   <tr key={item.id} className="hover:bg-white/[0.01] transition-colors group">
                     
                     {/* Address Display */}
-                    <td className="py-3.5 pr-4 max-w-[280px] font-semibold text-white truncate">
-                      {item.address}
+                    <td className="py-3.5 pr-4 max-w-[280px] truncate">
+                      <div className="font-semibold text-white truncate" title={item.address}>
+                        {item.address}
+                      </div>
+                      {item.raw_address && item.raw_address.toLowerCase().trim() !== item.address.toLowerCase().trim() && (
+                        <div className="text-[10px] text-white/40 mt-0.5 truncate" title={item.raw_address}>
+                          Original: {item.raw_address}
+                        </div>
+                      )}
                     </td>
                     
                     {/* Coordinates Copy */}

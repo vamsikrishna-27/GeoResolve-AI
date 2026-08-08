@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { 
   User, 
@@ -15,14 +16,23 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 
 export const Settings = () => {
-  const { user, login } = useAuth();
+  const { user, login, updateUser } = useAuth();
 
   const [activeTab, setActiveTab] = useState('profile'); // profile | password | notifications | developer
   
   // Profile Form States
-  const [profileName, setProfileName] = useState(user?.name || 'Jane Doe');
-  const [profileEmail, setProfileEmail] = useState(user?.email || 'demo@georesolve.ai');
-  const [profileCompany, setProfileCompany] = useState(user?.company || 'Vercel Partner Corp');
+  const [profileName, setProfileName] = useState(user?.name || '');
+  const [profileEmail, setProfileEmail] = useState(user?.email || '');
+  const [profileCompany, setProfileCompany] = useState(user?.company || '');
+
+  // Synchronize state with context user details when context mounts/loads
+  useEffect(() => {
+    if (user) {
+      setProfileName(user.name || '');
+      setProfileEmail(user.email || '');
+      setProfileCompany(user.company || '');
+    }
+  }, [user]);
   
   // Password Form States
   const [currentPassword, setCurrentPassword] = useState('');
@@ -45,18 +55,62 @@ export const Settings = () => {
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const triggerSave = (e) => {
+  const triggerSave = async (e) => {
     e.preventDefault();
+
+    if (activeTab !== 'profile') {
+      // Mock success for tabs that aren't integrated yet
+      setSaveLoading(true);
+      setSaveSuccess(false);
+      setTimeout(() => {
+        setSaveLoading(false);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+      }, 800);
+      return;
+    }
+
     setSaveLoading(true);
     setSaveSuccess(false);
 
-    // Simulate API update
-    setTimeout(() => {
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+    const token = localStorage.getItem('georesolve_token');
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    try {
+      const response = await axios.put(`${API_URL}/auth/profile`, {
+        full_name: profileName,
+        organization: profileCompany
+      }, { headers });
+
+      // Update auth context state and localStorage
+      updateUser(response.data);
+
+      setProfileName(response.data.name);
+      setProfileCompany(response.data.company);
+
       setSaveLoading(false);
       setSaveSuccess(true);
-      // Automatically fade out success message
       setTimeout(() => setSaveSuccess(false), 3000);
-    }, 1000);
+    } catch (err) {
+      console.error('Failed to save profile settings:', err);
+      setSaveLoading(false);
+      
+      let errMsg = 'Failed to update profile settings.';
+      if (err.response) {
+        errMsg = err.response.data?.detail || errMsg;
+        if (typeof errMsg === 'object') {
+          errMsg = err.response.data?.detail?.[0]?.msg || JSON.stringify(errMsg);
+        }
+      }
+      alert(errMsg);
+    }
   };
 
   const tabs = [

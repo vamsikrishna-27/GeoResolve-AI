@@ -191,6 +191,8 @@ export const GeoProvider = ({ children }) => {
       const record = {
         id: `hist_${Date.now()}`,
         address: data.address,
+        raw_address: data.raw_address || address,
+        normalized_query: data.normalized_query || data.address,
         lat: data.lat,
         lon: data.lon,
         confidence: data.confidence,
@@ -217,6 +219,7 @@ export const GeoProvider = ({ children }) => {
       const failedRecord = {
         id: `hist_${Date.now()}`,
         address,
+        raw_address: address,
         lat: 0,
         lon: 0,
         confidence: 0,

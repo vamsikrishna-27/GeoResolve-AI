@@ -27,3 +27,8 @@ class ProfileResponse(BaseModel):
     name: str
     role: str
     company: Optional[str] = None
+
+
+class ProfileUpdate(BaseModel):
+    full_name: str = Field(..., min_length=2)
+    organization: Optional[str] = None

@@ -1,20 +1,41 @@
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, Tuple
 from jose import jwt, JWTError
+from passlib.context import CryptContext
 from fastapi import HTTPException, status
 from app.core.config import settings
 
-# JWT verification helper for decoding Supabase authentication tokens
-def verify_supabase_jwt(token: str) -> dict:
+# Configure password hashing context using bcrypt
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verifies that a plain text password matches its hashed version."""
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password: str) -> str:
+    """Hashes a password string using bcrypt."""
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """Creates a local JWT access token containing the payload data and expiry."""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return encoded_jwt
+
+def verify_access_token(token: str) -> dict:
+    """Decodes a JWT access token using the secret key and verifies its signature."""
     try:
-        # Supabase uses RS256 or HS256 for signing JWTs.
-        # By default, we decode using the Supabase JWT secret. In enterprise environments, 
-        # this is verified against the project's JWKS endpoint or using the shared secret.
         payload = jwt.decode(
             token, 
-            settings.SUPABASE_JWT_SECRET, 
-            algorithms=["HS256"], 
-            audience="authenticated"
+            settings.SECRET_KEY, 
+            algorithms=[settings.JWT_ALGORITHM]
         )
         return payload
     except JWTError as e:
@@ -50,7 +71,6 @@ class TokenBucketRateLimiter:
             return True
         else:
             # Starvation bug fix: do not update last_update timestamp when request is blocked.
-            # Keeping the old state allows tokens to accumulate normally over elapsed time.
             return False
 
 # Instantiate a rate limiter: 60 tokens capacity, refill 1 token per second (60/min)

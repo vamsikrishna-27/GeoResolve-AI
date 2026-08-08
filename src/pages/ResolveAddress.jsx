@@ -213,9 +213,21 @@ export const ResolveAddress = () => {
                     {/* Primary coordinates card */}
                     <div className="glass rounded-xl p-5 space-y-4 border-l-2 border-accent col-span-1 sm:col-span-2">
                       <div className="flex justify-between items-start">
-                        <div>
-                          <div className="text-[9px] uppercase font-bold text-white/40 tracking-wider font-mono">Matched Registry Address</div>
-                          <h4 className="text-sm font-extrabold text-white mt-1 leading-relaxed">{result.address}</h4>
+                        <div className="space-y-2 max-w-[80%]">
+                          <div>
+                            <div className="text-[9px] uppercase font-bold text-white/40 tracking-wider font-mono">Original</div>
+                            <h4 className="text-xs font-semibold text-white/80 mt-0.5 leading-relaxed">{result.raw_address}</h4>
+                          </div>
+                          {result.raw_address && result.normalized_query && result.raw_address.toLowerCase().trim() !== result.normalized_query.toLowerCase().trim() && (
+                            <div>
+                              <div className="text-[9px] uppercase font-bold text-sky-400 tracking-wider font-mono">Corrected</div>
+                              <h4 className="text-xs font-semibold text-sky-300 mt-0.5 leading-relaxed">{result.normalized_query}</h4>
+                            </div>
+                          )}
+                          <div>
+                            <div className="text-[9px] uppercase font-bold text-white/40 tracking-wider font-mono">Matched Address</div>
+                            <h4 className="text-xs font-extrabold text-white mt-0.5 leading-relaxed">{result.address}</h4>
+                          </div>
                         </div>
                         <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
                           result.confidence >= 0.9 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-yellow-500/10 text-yellow-400'

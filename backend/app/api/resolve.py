@@ -1,7 +1,13 @@
+import json
+import uuid
+import traceback
 from typing import Optional, List
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from app.dependencies.supabase import get_supabase_admin_client
+from sqlalchemy.orm import Session
+
+from app.database.session import SessionLocal
+from app.database.models import AddressRequest, AddressResult, SearchHistory, AuditLog, ApiKey
 from app.dependencies.auth import get_current_user_or_api_key
 from app.schemas.resolve import (
     AddressResolveRequest, 
@@ -10,7 +16,6 @@ from app.schemas.resolve import (
     GeocodeLandmark
 )
 from app.services.decision_service import DecisionService
-import json
 
 router = APIRouter(tags=["Address Resolution"])
 decision_service = DecisionService()
@@ -44,73 +49,78 @@ def log_resolution_to_db_bg(
     parsed_state: Optional[str],
     parsed_pincode: Optional[str]
 ):
-    supabase = get_supabase_admin_client()
+    db = SessionLocal()
     try:
+        user_uuid = uuid.UUID(user_id)
+        
         # a. Insert parsed address profile
-        address_record = {
-            "raw_address": raw_address,
-            "normalized_address": normalized_address,
-            "landmark": parsed_landmark,
-            "street": parsed_street,
-            "locality": parsed_locality,
-            "area": parsed_area,
-            "city": parsed_city,
-            "district": parsed_district,
-            "state": parsed_state,
-            "pincode": parsed_pincode
-        }
-        addr_res = supabase.table("addresses").insert(address_record).execute()
-        address_id = addr_res.data[0]["id"] if addr_res.data else None
+        addr_req = AddressRequest(
+            raw_address=raw_address,
+            normalized_address=normalized_address,
+            landmark=parsed_landmark,
+            street=parsed_street,
+            locality=parsed_locality,
+            area=parsed_area,
+            city=parsed_city,
+            district=parsed_district,
+            state=parsed_state,
+            pincode=parsed_pincode,
+            language="en"
+        )
+        db.add(addr_req)
+        db.flush() # Populate addr_req.id for Foreign Key reference
 
         # b. Insert resolved coordinates schema
-        if address_id:
-            resolved_record = {
-                "address_id": address_id,
-                "latitude": latitude,
-                "longitude": longitude,
-                "confidence": confidence,
-                "reasoning": "; ".join(reasoning),
-                "matched_landmark": matched_landmark,
-                "matched_pincode": matched_pincode,
-                "nearby_pois": json.dumps(nearby_pois),
-                "response_time_ms": response_time_ms,
-                "status": status_str
-            }
-            resolved_res = supabase.table("resolved_addresses").insert(resolved_record).execute()
-            resolved_address_id = resolved_res.data[0]["id"] if resolved_res.data else None
+        addr_res = AddressResult(
+            address_id=addr_req.id,
+            latitude=latitude,
+            longitude=longitude,
+            confidence=confidence,
+            reasoning="; ".join(reasoning),
+            matched_landmark=matched_landmark,
+            matched_pincode=matched_pincode,
+            nearby_pois=json.dumps(nearby_pois),
+            response_time_ms=response_time_ms,
+            status=status_str
+        )
+        db.add(addr_res)
+        db.flush() # Populate addr_res.id for SearchHistory reference
 
-            # c. Log search to user history
-            if resolved_address_id:
-                history_record = {
-                    "user_id": user_id,
-                    "raw_address": raw_address,
-                    "resolved_address_id": resolved_address_id,
-                    "response_time_ms": response_time_ms
-                }
-                supabase.table("search_history").insert(history_record).execute()
+        # c. Log search to user history
+        history_record = SearchHistory(
+            user_id=user_uuid,
+            raw_address=raw_address,
+            resolved_address_id=addr_res.id,
+            response_time_ms=response_time_ms
+        )
+        db.add(history_record)
 
-            # d. Log corrections in audit ledger if address was normalized or corrected
-            if normalized_address and normalized_address.lower() != raw_address.lower():
-                audit_record = {
-                    "user_id": user_id,
-                    "original_address": raw_address,
-                    "corrected_address": normalized_address,
-                    "reason": reasoning[0] if reasoning else "Normalized casing and structures."
-                }
-                supabase.table("audit_logs").insert(audit_record).execute()
+        # d. Log corrections in audit ledger if address was normalized or corrected
+        if normalized_address and normalized_address.lower() != raw_address.lower():
+            audit_record = AuditLog(
+                user_id=user_uuid,
+                original_address=raw_address,
+                corrected_address=normalized_address,
+                reason=reasoning[0] if reasoning else "Normalized casing and structures."
+            )
+            db.add(audit_record)
 
         # e. Increment quota usage if API key is active
         if auth_type == "api_key" and api_key_id:
             try:
-                response = supabase.table("api_keys").select("usage").eq("id", api_key_id).execute()
-                if response.data:
-                    current_usage = response.data[0].get("usage", 0)
-                    supabase.table("api_keys").update({"usage": current_usage + 1}).eq("id", api_key_id).execute()
+                key_uuid = uuid.UUID(api_key_id)
+                db_key = db.query(ApiKey).filter(ApiKey.id == key_uuid).first()
+                if db_key:
+                    db_key.usage_count += 1
             except Exception as e:
                 print(f"Error incrementing API key usage: {str(e)}")
 
+        db.commit()
     except Exception as db_err:
-        print(f"PostgreSQL background logging skipped: {str(db_err)}")
+        db.rollback()
+        print(f"MySQL background logging failed: {traceback.format_exc()}")
+    finally:
+        db.close()
 
 @router.post("/resolve", response_model=AddressResolveResponse)
 async def resolve_address(
@@ -179,7 +189,9 @@ async def resolve_address(
         matched_pincode=result.matched_pincode,
         nearby_pois=result.nearby_pois,
         alternative_candidates=result.alternative_candidates,
-        response_time_ms=result.response_time_ms
+        response_time_ms=result.response_time_ms,
+        original_query=result.original_address,
+        normalized_query=result.spelling_corrected_address
     )
 
 @router.post("/api/v1/geocode/resolve", response_model=AddressGeocodeResolveResponse)
@@ -255,7 +267,9 @@ async def resolve_geocode_v1(
         validated_pincode=result.validated_pincode,
         matched_landmarks=matched_landmarks,
         evidence=result.evidence,
-        processing_time_ms=result.response_time_ms
+        processing_time_ms=result.response_time_ms,
+        original_query=raw_address,
+        normalized_query=result.spelling_corrected_address
     )
 
 @router.post("/validate-pincode")

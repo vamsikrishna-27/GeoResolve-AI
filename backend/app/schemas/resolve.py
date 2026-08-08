@@ -17,6 +17,8 @@ class AddressResolveResponse(BaseModel):
     nearby_pois: List[str] = []
     alternative_candidates: List[Dict[str, Any]] = []
     response_time_ms: int
+    original_query: Optional[str] = None
+    normalized_query: Optional[str] = None
 
 class GeocodeLandmark(BaseModel):
     name: str
@@ -32,3 +34,5 @@ class AddressGeocodeResolveResponse(BaseModel):
     matched_landmarks: List[GeocodeLandmark]
     evidence: List[str]
     processing_time_ms: int
+    original_query: Optional[str] = None
+    normalized_query: Optional[str] = None

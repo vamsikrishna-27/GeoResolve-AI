@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { InteractiveChart } from '../components/InteractiveChart';
 import { 
   BarChart3, 
@@ -15,8 +16,33 @@ import { motion } from 'framer-motion';
 
 export const Analytics = () => {
   const [timeframe, setTimeframe] = useState('7d'); // 24h | 7d | 30d
+  const [liveMetrics, setLiveMetrics] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // Data sets matching the timeframes to simulate dynamic dashboard changes
+  useEffect(() => {
+    const fetchLiveMetrics = async () => {
+      const token = localStorage.getItem('georesolve_token');
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      
+      const headers = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      try {
+        const response = await axios.get(`${API_URL}/analytics`, { headers });
+        setLiveMetrics(response.data);
+      } catch (err) {
+        console.error('Failed to load live operational metrics:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLiveMetrics();
+  }, []);
+
+  // Data sets matching the timeframe
   const usageData = {
     '24h': [
       { label: '00:00', value: 890 }, { label: '04:00', value: 1200 },
@@ -179,24 +205,40 @@ export const Analytics = () => {
             </h2>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
             
             <div className="p-4 rounded-lg bg-slate-950/60 border border-white/5 flex flex-col space-y-1">
               <span className="text-[9px] font-mono text-white/40 uppercase">Engine Success Rate</span>
-              <span className="text-2xl font-black text-emerald-400 font-mono">99.87%</span>
-              <span className="text-[8px] text-white/30 font-mono">24H ROLLING SLA</span>
+              <span className="text-2xl font-black text-emerald-400 font-mono">
+                {liveMetrics ? `${liveMetrics.success_rate}%` : '99.87%'}
+              </span>
+              <span className="text-[8px] text-white/30 font-mono">LIVE SLA RATE</span>
             </div>
 
             <div className="p-4 rounded-lg bg-slate-950/60 border border-white/5 flex flex-col space-y-1">
-              <span className="text-[9px] font-mono text-white/40 uppercase">P99 Core Latency</span>
-              <span className="text-2xl font-black text-accent font-mono">420ms</span>
-              <span className="text-[8px] text-white/30 font-mono">OSM ROUTER FETCH</span>
+              <span className="text-[9px] font-mono text-white/40 uppercase">Avg Core Latency</span>
+              <span className="text-2xl font-black text-accent font-mono">
+                {liveMetrics ? `${liveMetrics.avg_latency}ms` : '420ms'}
+              </span>
+              <span className="text-[8px] text-white/30 font-mono">CORE SYSTEM LATENCY</span>
             </div>
 
             <div className="p-4 rounded-lg bg-slate-950/60 border border-white/5 flex flex-col space-y-1">
-              <span className="text-[9px] font-mono text-white/40 uppercase">Cache Saved Budget</span>
-              <span className="text-2xl font-black text-sky-400 font-mono">33.4%</span>
-              <span className="text-[8px] text-white/30 font-mono">CPU BANDWIDTH</span>
+              <span className="text-[9px] font-mono text-white/40 uppercase">Typo Corrections</span>
+              <span className="text-2xl font-black text-sky-400 font-mono">
+                {liveMetrics ? liveMetrics.typo_corrections : 0}
+              </span>
+              <span className="text-[8px] text-white/30 font-mono">
+                OK: {liveMetrics ? liveMetrics.successful_corrections : 0} | ERR: {liveMetrics ? liveMetrics.failed_corrections : 0}
+              </span>
+            </div>
+
+            <div className="p-4 rounded-lg bg-slate-950/60 border border-white/5 flex flex-col space-y-1">
+              <span className="text-[9px] font-mono text-white/40 uppercase">Correction Accuracy</span>
+              <span className="text-2xl font-black text-emerald-400 font-mono">
+                {liveMetrics ? `${liveMetrics.correction_accuracy}%` : '0.00%'}
+              </span>
+              <span className="text-[8px] text-white/30 font-mono">FUZZY ACCURACY METRIC</span>
             </div>
 
           </div>

@@ -2,8 +2,10 @@ import json
 import time
 import asyncio
 from typing import Optional, Any, Dict
+from datetime import datetime, timezone, timedelta
 from app.core.config import settings
-from app.dependencies.supabase import get_supabase_admin_client
+from app.database.session import SessionLocal
+from app.database.models import CacheEntry
 
 class CacheService:
     def __init__(self):
@@ -20,7 +22,7 @@ class CacheService:
             except (ImportError, Exception):
                 self.redis_client = None
                 self.has_redis = False
-                print("Redis connection skipped. Caching will use in-memory and PostgreSQL fallback.")
+                print("Redis connection skipped. Caching will use in-memory and MySQL fallback.")
 
     async def get(self, key: str) -> Optional[Any]:
         """
@@ -39,35 +41,36 @@ class CacheService:
         # 2. Redis check
         if self.has_redis and self.redis_client:
             try:
-                # Run sync Redis get inside thread pool
                 val = await asyncio.to_thread(self.redis_client.get, key)
                 if val:
                     return json.loads(val.decode())
             except Exception:
                 pass
 
-        # 3. Supabase Cache fallback
-        supabase = get_supabase_admin_client()
+        # 3. MySQL Cache fallback
+        db = SessionLocal()
         try:
-            query = supabase.table("cache").select("value, expires_at").eq("key", key)
-            response = await asyncio.to_thread(query.execute)
-            if response.data:
-                record = response.data[0]
-                # Check DB string expiry
-                from datetime import datetime
-                expires_str = record.get("expires_at")
-                if expires_str:
-                    expires_dt = datetime.fromisoformat(expires_str.replace("Z", "+00:00"))
-                    if expires_dt.timestamp() > now:
-                        # Write back to memory cache
-                        self.memory_cache[key] = (record["value"], expires_dt.timestamp())
-                        return record["value"]
-                    else:
-                        # Delete expired DB entry in the background
-                        delete_query = supabase.table("cache").delete().eq("key", key)
-                        await asyncio.to_thread(delete_query.execute)
-        except Exception:
-            pass
+            db_record = db.query(CacheEntry).filter(CacheEntry.key == key).first()
+            if db_record:
+                expires_dt = db_record.expires_at
+                # Check if it has tzinfo, if not assume UTC
+                if expires_dt.tzinfo is None:
+                    expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+                
+                now_dt = datetime.now(timezone.utc)
+                if expires_dt > now_dt:
+                    parsed_val = json.loads(db_record.value)
+                    # Write back to memory cache
+                    self.memory_cache[key] = (parsed_val, expires_dt.timestamp())
+                    return parsed_val
+                else:
+                    # Delete expired DB entry
+                    db.delete(db_record)
+                    db.commit()
+        except Exception as e:
+            print(f"Error reading from MySQL cache: {e}")
+        finally:
+            db.close()
 
         return None
 
@@ -89,18 +92,27 @@ class CacheService:
             except Exception:
                 pass
 
-        # 3. Store in Supabase Cache table
-        supabase = get_supabase_admin_client()
+        # 3. Store in MySQL Cache table
+        db = SessionLocal()
         try:
-            from datetime import datetime, timezone, timedelta
             expires_dt = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
-            record = {
-                "key": key,
-                "value": value,
-                "expires_at": expires_dt.isoformat()
-            }
-            # Perform upsert on Postgres cache table
-            upsert_query = supabase.table("cache").upsert(record)
-            await asyncio.to_thread(upsert_query.execute)
-        except Exception:
-            pass
+            serialized_val = json.dumps(value)
+            
+            # Use upsert-like logic
+            db_record = db.query(CacheEntry).filter(CacheEntry.key == key).first()
+            if db_record:
+                db_record.value = serialized_val
+                db_record.expires_at = expires_dt
+            else:
+                db_record = CacheEntry(
+                    key=key,
+                    value=serialized_val,
+                    expires_at=expires_dt
+                )
+                db.add(db_record)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"Error writing to MySQL cache: {e}")
+        finally:
+            db.close()

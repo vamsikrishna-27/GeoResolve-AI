@@ -41,12 +41,18 @@ async def test_transliteration_service():
 async def test_address_normalizer():
     normalizer = AddressNormalizer()
     
-    # Abbreviations and spacing cleanup (normalizer cleans spacing, expansions but leaves transliterations to TransliterationService)
+    # Abbreviations and spacing cleanup
     raw = "Flat 102,  opp  Ganesh Temple, HIG Rd, Bangalore"
     res = await normalizer.normalize(raw)
     assert "Opposite" in res
     assert "Road" in res
-    assert "Bangalore" in res
+    assert "Bengaluru" in res
+
+    # Spelling corrections verification
+    assert await normalizer.normalize("Amalapuram, Andrha Pradesh") == "Amalapuram, Andhra Pradesh"
+    assert await normalizer.normalize("Hydrabad") == "Hyderabad"
+    assert await normalizer.normalize("Hitec Cty") == "Hitech City"
+    assert await normalizer.normalize("Kuktpally, Gunturr") == "Kukatpally, Guntur"
 
 # 4. Address Parser Unit Tests
 @pytest.mark.asyncio
@@ -123,15 +129,14 @@ def test_confidence_engine():
 
 # 8. POST /api/v1/geocode/resolve API Route Integration Test
 @patch("app.dependencies.auth.api_key_repo.validate_key")
-@patch("app.api.resolve.get_supabase_admin_client")
-def test_geocode_resolve_v1_endpoint(mock_supabase_admin, mock_validate_key):
+@patch("app.api.resolve.SessionLocal")
+def test_geocode_resolve_v1_endpoint(mock_session_local, mock_validate_key):
     # Mock API Key Auth
     mock_validate_key.return_value = (True, {"id": "key_123", "user_id": "user_123", "name": "Key A", "status": "Active", "usage": 0, "max_limit": 25000}, None)
     
-    # Mock Supabase table updates
+    # Mock SessionLocal db connection
     mock_db = MagicMock()
-    mock_supabase_admin.return_value = mock_db
-    mock_db.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{"id": "addr_123"}])
+    mock_session_local.return_value = mock_db
 
     headers = {"X-API-KEY": "gr_live_xyz"}
     payload = {"address": "Flat 102, opposite Ganesh Temple, HIG Road, Bengaluru 560008"}
